@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
 import re
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -59,7 +60,6 @@ def addon_stream(type, id):
     lien_cible = f"https://animesalt.cx/episode/{slug_anime}-{saison}x{episode}/"
     print(f"🔗 Le robot cible l'URL : {lien_cible}")
 
-    # Mode direct sans Playwright (ultra stable sur Render)
     return jsonify({
         "streams": [{
             "title": f"AnimeSalt 🚀 ({nom_anime} S{saison}E{episode}) - Cliquer pour ouvrir",
@@ -68,4 +68,5 @@ def addon_stream(type, id):
     })
 
 if __name__ == '__main__':
-    app.run(port=7000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
