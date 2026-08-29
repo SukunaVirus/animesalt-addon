@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 import requests
 import re
 
-app = Flask(name)
+app = Flask(__name__)
 CORS(app)
 
 MANIFEST = {
@@ -96,5 +96,5 @@ def addon_stream(type, id):
         print("❌ ÉCHEC : Épisode introuvable ou site inaccessible.")
         return jsonify({"streams": []})
 
-if name == 'main':
+if __name__ == '__main__':
     app.run(port=7000)
