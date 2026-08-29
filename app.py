@@ -12,7 +12,7 @@ MANIFEST = {
     "id": "org.animesalt.tv",
     "version": "2.0.0",
     "name": "AnimeSalt Ultimate 🚀",
-    "description": "Lecture directe via Render",
+    "description": "Lecture directe via Render Optimisé",
     "types": ["anime", "series", "movie"],
     "catalogs": [],
     "resources": ["stream"],
@@ -41,18 +41,21 @@ def transformer_en_slug(titre):
 def extraire_m3u8(url):
     lien_trouve = None
     with sync_playwright() as p:
-        # Configuration ultra-légère pour ne pas faire crasher Render
         browser = p.chromium.launch(
             headless=True,
             args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
+                "--no-sandbox", 
+                "--disable-setuid-sandbox", 
+                "--disable-dev-shm-usage", 
+                "--disable-gpu", 
                 "--single-process"
             ]
         )
-        page = browser.new_page()
+        context = browser.new_context()
+        page = context.new_page()
+        
+        # ⚡ L'arme secrète : on bloque toutes les images, CSS et médias pour charger la page instantanément
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "stylesheet", "font", "media"] else route.continue_())
         
         def ecouter_reseau(requete):
             nonlocal lien_trouve
@@ -62,11 +65,12 @@ def extraire_m3u8(url):
         page.on("request", ecouter_reseau)
         
         try:
-            page.goto(url, wait_until="load", timeout=15000)
+            # On n'attend plus que la page soit 100% chargée, juste le code principal
+            page.goto(url, wait_until="domcontentloaded", timeout=10000)
             page.mouse.click(400, 300)
-            page.wait_for_timeout(3000)
-        except:
-            pass
+            page.wait_for_timeout(2000)
+        except Exception as e:
+            print(f"Erreur Playwright: {e}")
         finally:
             browser.close()
             
