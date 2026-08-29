@@ -3,7 +3,7 @@ from flask_cors import CORS
 import requests
 import re
 
-app = Flask(name)
+app = Flask(__name__)
 CORS(app)
 
 MANIFEST = {
@@ -67,5 +67,5 @@ def addon_stream(type, id):
         }]
     })
 
-if name == 'main':
+if __name__ == '__main__':
     app.run(port=7000)
