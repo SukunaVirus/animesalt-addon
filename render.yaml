@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: animesalt-addon
-    env: python
-    buildCommand: pip install -r requirements.txt && playwright install chromium
-    startCommand: python app.py
