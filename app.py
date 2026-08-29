@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
+from playwright.sync_api import sync_playwright
 import requests
 import re
 import os
@@ -11,7 +12,7 @@ MANIFEST = {
     "id": "org.animesalt.tv",
     "version": "2.0.0",
     "name": "AnimeSalt Ultimate 🚀",
-    "description": "L'arsenal ultime pour lire n'importe quel anime sur AnimeSalt",
+    "description": "Lecture directe via Render",
     "types": ["anime", "series", "movie"],
     "catalogs": [],
     "resources": ["stream"],
@@ -23,41 +24,57 @@ def addon_manifest():
     return jsonify(MANIFEST)
 
 def recuperer_nom_anime(imdb_id):
-    """Récupère le vrai nom de l'anime sur Cinemeta grâce à l'ID IMDb de Stremio"""
     try:
         url_meta = f"https://v3-cinemeta.strem.io/meta/series/{imdb_id}.json"
         reponse = requests.get(url_meta, timeout=5)
-        data = reponse.json()
-        titre = data.get("meta", {}).get("name", "")
-        if titre:
-            return titre
-    except Exception as e:
-        print(f"Erreur récupération titre : {e}")
+        titre = reponse.json().get("meta", {}).get("name", "")
+        if titre: return titre
+    except:
+        pass
     return None
 
 def transformer_en_slug(titre):
-    """Transforme le titre pour coller à l'URL d'AnimeSalt"""
     titre = titre.lower()
     titre = re.sub(r'[^a-z0-9\s-]', '', titre)
-    titre = re.sub(r'\s+', '-', titre.strip())
-    return titre
+    return re.sub(r'\s+', '-', titre.strip())
 
-def chercher_vrai_lien(url_page):
-    """Tente d'extraire directement le lien m3u8 s'il n'est pas trop protégé par le site"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        reponse = requests.get(url_page, headers=headers, timeout=5)
-        match = re.search(r'(https?://[^\s<>"]+?\.m3u8[^\s<>"]*?)', reponse.text)
-        if match:
-            return match.group(1)
-    except Exception as e:
-        print(f"Erreur extraction lien : {e}")
-    return None
+def extraire_m3u8(url):
+    lien_trouve = None
+    with sync_playwright() as p:
+        # Configuration ultra-légère pour ne pas faire crasher Render
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process"
+            ]
+        )
+        page = browser.new_page()
+        
+        def ecouter_reseau(requete):
+            nonlocal lien_trouve
+            if ".m3u8" in requete.url and "ping.gif" not in requete.url:
+                lien_trouve = requete.url
+                
+        page.on("request", ecouter_reseau)
+        
+        try:
+            page.goto(url, wait_until="load", timeout=15000)
+            page.mouse.click(400, 300)
+            page.wait_for_timeout(3000)
+        except:
+            pass
+        finally:
+            browser.close()
+            
+    return lien_trouve
 
 @app.route('/stream/<type>/<id>.json')
 def addon_stream(type, id):
-    print(f"\n🎬 Stremio demande l'ID : {id}")
-    
+    print(f"\n🎬 Demande ID : {id}")
     parts = id.split(':')
     imdb_id = parts[0]
     saison = parts[1] if len(parts) >= 3 else "1"
@@ -69,26 +86,15 @@ def addon_stream(type, id):
 
     slug_anime = transformer_en_slug(nom_anime)
     lien_cible = f"https://animesalt.cx/episode/{slug_anime}-{saison}x{episode}/"
-    print(f"🔗 Analyse de la page : {lien_cible}")
 
-    vrai_lien_video = chercher_vrai_lien(lien_cible)
+    vrai_lien_video = extraire_m3u8(lien_cible)
 
     if vrai_lien_video:
-        print(f"✅ Lien vidéo direct trouvé : {vrai_lien_video}")
         return jsonify({
-            "streams": [{
-                "title": f"AnimeSalt Direct 🚀\n{nom_anime} S{saison}E{episode}",
-                "url": vrai_lien_video
-            }]
+            "streams": [{"title": f"AnimeSalt 🚀\nDirect S{saison}E{episode}", "url": vrai_lien_video}]
         })
     else:
-        print("⚠️ Lien caché par la sécurité du site. Utilisation de l'ouverture Web.")
-        return jsonify({
-            "streams": [{
-                "title": f"Ouvrir sur le Web 🌐\n{nom_anime} S{saison}E{episode}",
-                "externalUrl": lien_cible
-            }]
-        })
+        return jsonify({"streams": []})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
